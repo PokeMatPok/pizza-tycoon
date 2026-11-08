@@ -1,14 +1,14 @@
 --!strict
--- DeliveryZones: shared competitive city zones. Each zone pad has a
--- "send van" prompt for every plot owner (10 ready pizzas + a free
--- driver). Every payout cycle, the zone pot is split by each player's
--- contribution share of the van shipments delivered during the cycle.
+-- DeliveryZones: one shared competitive delivery zone per city district.
+-- Each zone pad has a "send van" prompt for every plot owner (10 ready
+-- pizzas + a free driver). Every payout cycle, the zone pot is split by
+-- each player's contribution share of van shipments delivered during the
+-- cycle. Pot size = district wealth (zoneDemand), boosted by events.
 
 local DeliveryZones = {}
 
 local Config, Net
-local DataManager, Economy, PlotManager, ModelFactory, EventManager
-
+local DataManager, Economy, PlotManager, ModelFactory, EventManager, CityMap
 type ZoneState = {
 	cfg: any,
 	pad: Model,
@@ -37,7 +37,7 @@ function refreshSign(zone: ZoneState)
 		end
 	end
 	zone.sign.Text = ("%s\nPot: $%d / %ds cycle\nLeader: %s (%d boxes)"):format(
-		zone.cfg.name, zone.cfg.demand, Config.ZonePayoutInterval, top, if topAmount >= 0 then topAmount else 0
+		zone.cfg.name, zone.cfg.zoneDemand, Config.ZonePayoutInterval, top, if topAmount >= 0 then topAmount else 0
 	)
 end
 
@@ -49,7 +49,7 @@ local function payoutCycle(zone: ZoneState)
 		refreshSign(zone)
 		return
 	end
-	local pot = zone.cfg.demand
+	local pot = zone.cfg.zoneDemand
 	local event = EventManager.GetCurrent()
 	if event then
 		pot *= event.zoneMult
@@ -71,7 +71,7 @@ local function payoutCycle(zone: ZoneState)
 		payouts = payouts,
 	})
 	for player in zone.contributions do
-		Net.Announce:FireClient(player, ("%s paid out! Check your cash."):format(zone.cfg.name), zone.cfg.color)
+		Net.Announce:FireClient(player, ("%s paid out! Check your cash."):format(zone.cfg.name), zone.cfg.mapColor)
 	end
 	zone.contributions = {}
 	refreshSign(zone)
@@ -101,7 +101,7 @@ local function sendVan(player: Player, zone: ZoneState)
 	end)
 	zone.inTransit[player] = (zone.inTransit[player] or 0) + 1
 	-- Visual: van drives from plot pad to the zone and back.
-	local van = ModelFactory.van(zone.cfg.color, state.model, PlotManager.LocalToWorld(state, PlotManager.Points.VAN_PAD))
+	local van = ModelFactory.van(zone.cfg.mapColor, state.model, PlotManager.LocalToWorld(state, PlotManager.Points.VAN_PAD))
 	local zoneCf = zone.pad:GetPivot() * CFrame.new(0, 1, 12)
 	task.spawn(function()
 		local tween1 = ModelFactory.tweenModel(van, zoneCf, Config.VanTransitTime)
@@ -113,7 +113,7 @@ local function sendVan(player: Player, zone: ZoneState)
 			zone.contributions[player] = (zone.contributions[player] or 0) + Config.VanShipmentSize
 			zone.inTransit[player] -= 1
 			refreshSign(zone)
-			Net.Announce:FireClient(player, ("Van delivered %d pizzas to %s!"):format(Config.VanShipmentSize, zone.cfg.name), zone.cfg.color)
+			Net.Announce:FireClient(player, ("Van delivered %d pizzas to %s!"):format(Config.VanShipmentSize, zone.cfg.name), zone.cfg.mapColor)
 		else
 			zone.inTransit[player] -= 1
 		end
@@ -129,19 +129,20 @@ function DeliveryZones.Init(ctx)
 	PlotManager = ctx.Services.PlotManager
 	ModelFactory = ctx.Services.ModelFactory
 	EventManager = ctx.Services.EventManager
+	CityMap = ctx.Services.CityMap
 
-	local world = workspace:FindFirstChild("PizzaTycoonWorld") or workspace
-	for _, zoneCfg in Config.Zones do
-		local pad = ModelFactory.zonePad(zoneCfg.color, world, CFrame.new(zoneCfg.position))
-		local _, sign = ModelFactory.infoSign(world, CFrame.new(zoneCfg.position) * CFrame.new(0, 0, -13), Vector2.new(320, 90))
+	local world = CityMap.World
+	for _, district in Config.City.Districts do
+		local pad = ModelFactory.zonePad(district.mapColor, world, CFrame.new(district.zone + Vector3.new(0, 0.4, 0)))
+		local _, sign = ModelFactory.infoSign(world, CFrame.new(district.zone + Vector3.new(0, 0, -13)), Vector2.new(320, 90))
 		local zone: ZoneState = {
-			cfg = zoneCfg,
+			cfg = district,
 			pad = pad,
 			sign = sign,
 			contributions = {},
 			inTransit = {},
 		}
-		local prompt = ModelFactory.prompt(pad.PrimaryPart :: BasePart, ("Send Van (%d pizzas)"):format(Config.VanShipmentSize), zoneCfg.name, 0.5)
+		local prompt = ModelFactory.prompt(pad.PrimaryPart :: BasePart, ("Send Van (%d pizzas)"):format(Config.VanShipmentSize), district.name, 0.5)
 		prompt.Triggered:Connect(function(player)
 			local ok, err = pcall(sendVan, player, zone)
 			if not ok then

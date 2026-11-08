@@ -87,8 +87,10 @@ local function tickTheft(player: Player, state, data)
 	if data.upgrades.security >= 4 then
 		return
 	end
+	local district = Config.City.Districts[state.theme.district]
 	local chance = Config.Theft.baseChancePerMin * Config.ProductionTick / 60
 	chance *= Config.SecurityTiers[data.upgrades.security].theftChanceMult
+	chance *= if district then district.theftMult else 1
 	if currentEvent then
 		chance *= currentEvent.theftMult
 	end
@@ -108,10 +110,13 @@ local function tickTheft(player: Player, state, data)
 	DataManager.Mutate(player, function(d)
 		d.ingredients[ing] = math.max(0, (d.ingredients[ing] or 0) - Config.Theft.stealAmount)
 	end)
-	-- Visual: shadowy customer flees the warehouse.
+	-- Visual: shadowy thief slips out through the storefront and flees.
 	local spy = ModelFactory.customer(Color3.fromRGB(30, 30, 35), state.model, PlotManager.LocalToWorld(state, PlotManager.Points.WAREHOUSE))
-	ModelFactory.tweenModel(spy, PlotManager.LocalToWorld(state, PlotManager.Points.STREET), 2)
-	task.delay(2.2, function()
+	ModelFactory.walkPath(spy, {
+		PlotManager.LocalToWorld(state, PlotManager.Points.DOOR),
+		PlotManager.LocalToWorld(state, PlotManager.Points.STREET),
+	}, 12)
+	task.delay(4, function()
 		if spy and spy.Parent then
 			spy:Destroy()
 		end

@@ -1,22 +1,23 @@
 --!strict
--- PlotManager: builds the themed plots, owns all ProximityPrompt-driven
+-- PlotManager: builds the district lots, owns all ProximityPrompt-driven
 -- interactions (buy shipments, upgrades, staff, recipes, expansions,
 -- heists), keeps prompt labels/signs in sync with player data, and
--- handles claim/release lifecycle.
+-- handles claim/release lifecycle. The restaurant is a real low-poly
+-- building (hall, storefront, awning, rooftop sign) built on claim.
 
 local Players = game:GetService("Players")
 
 local PlotManager = {}
 
 local Config, Net
-local Economy, DataManager
-local ModelFactory
+local Economy, DataManager, ModelFactory, CityMap
 
 export type PlotState = {
 	theme: any,
 	owner: Player?,
 	model: Model,
 	platform: Part,
+	building: Model?,
 	counter: Model,
 	oven: Model,
 	warehouse: Part,
@@ -38,32 +39,45 @@ local function toWorld(theme, offset: Vector3, y: number?): CFrame
 	return yawCf(theme) * CFrame.new(offset.X, y or offset.Y, offset.Z)
 end
 
-local STREET = Vector3.new(0, 2, -34)
-local COUNTER = Vector3.new(0, 2, -24)
-local OVEN = Vector3.new(-18, 2, 0)
-local WAREHOUSE = Vector3.new(18, 2, 0)
+-- Lot layout (local space; front/street is -Z, lot center is 0,0).
+-- The restaurant hall occupies z -44..-8, the work yard z 0..44.
+local STREET = Vector3.new(0, 2, -46)
+local COUNTER = Vector3.new(0, 2, -34)
+local OVEN = Vector3.new(-16, 2, -16)
+local WAREHOUSE = Vector3.new(16, 2, -16)
 local VAN_PAD = Vector3.new(0, 2, 18)
+local DOOR = Vector3.new(0, 2, -30)
 local EXPANSION_OFFSETS = {
-	Vector3.new(-18, 2, 18),
-	Vector3.new(18, 2, 18),
-	Vector3.new(0, 2, 18),
+	Vector3.new(-22, 2, 20),
+	Vector3.new(22, 2, 20),
+	Vector3.new(0, 2, 34),
 }
 
 local function localCf(theme, offset: Vector3): CFrame
 	return toWorld(theme, offset)
 end
 
--- Build the static (unclaimed) plot: platform + claim prompt + theme sign.
+-- Build the static (unclaimed) lot: platform + FOR SALE sign + claim prompt.
 local function buildBasePlot(theme, parent): PlotState
 	local model = Instance.new("Model")
 	model.Name = "Plot_" .. theme.id
 
 	local platform = ModelFactory.basePart({
 		Name = "Platform",
-		Size = Vector3.new(60, 1, 60),
+		Size = Vector3.new(66, 0.5, 92),
+		Color = Color3.fromRGB(120, 120, 124),
+		Material = Enum.Material.Concrete,
+		CFrame = yawCf(theme) * CFrame.new(0, 1.0, -2),
+		Parent = model,
+	})
+	-- Pale stripe marking the building footprint on the empty lot.
+	ModelFactory.basePart({
+		Name = "Footprint",
+		Size = Vector3.new(54, 0.1, 38),
 		Color = theme.baseColor,
 		Material = Enum.Material.Concrete,
-		CFrame = yawCf(theme) * CFrame.new(0, 0.25, 0),
+		CanCollide = false,
+		CFrame = yawCf(theme) * CFrame.new(0, 1.3, -26),
 		Parent = model,
 	})
 
@@ -72,6 +86,7 @@ local function buildBasePlot(theme, parent): PlotState
 		owner = nil,
 		model = model,
 		platform = platform,
+		building = nil,
 		counter = nil :: any,
 		oven = nil :: any,
 		warehouse = nil :: any,
@@ -81,14 +96,15 @@ local function buildBasePlot(theme, parent): PlotState
 		prompts = {},
 	}
 
-	-- Theme sign + claim prompt at the street edge.
+	-- FOR SALE sign + claim prompt at the street edge.
 	local signPart, signText = ModelFactory.infoSign(model, toWorld(theme, STREET, 4))
-	signText.Text = ("%s\nBuy Plot: $%d"):format(theme.name, theme.baseCost)
+	local district = Config.City.Districts[theme.district]
+	signText.Text = ("%s\nFOR SALE: $%d\n(%s)"):format(theme.name, theme.baseCost, district.name)
 	state.signs.theme = signText
 
 	local claimPrompt = ModelFactory.prompt(
 		signPart,
-		("Buy Plot ($%d)"):format(theme.baseCost),
+		("Buy Restaurant ($%d)"):format(theme.baseCost),
 		theme.name,
 		1
 	)
@@ -101,24 +117,27 @@ local function buildBasePlot(theme, parent): PlotState
 	return state
 end
 
--- Build the owned shop structures on a claimed plot.
+-- Build the owned restaurant on a claimed lot.
 local function buildShop(state: PlotState, parent)
 	local theme = state.theme
 	local model = state.model
 
-	-- Street-facing counter.
+	-- The restaurant building hall: front faces the street (-Z).
+	state.building = ModelFactory.restaurantBuilding(theme.accentColor, theme.baseColor, theme.name, model, localCf(theme, Vector3.new(0, 2, -26)))
+
+	-- Street-facing counter just inside the storefront.
 	state.counter = ModelFactory.counter(theme.accentColor, model, localCf(theme, COUNTER))
 
 	-- Ready pizza stock sign at the counter.
-	local _, stockSign = ModelFactory.infoSign(model, toWorld(theme, COUNTER + Vector3.new(4, 0, -2), 4))
+	local _, stockSign = ModelFactory.infoSign(model, toWorld(theme, COUNTER + Vector3.new(7, 0, -3), 4))
 	state.signs.stock = stockSign
 
-	-- Oven.
+	-- Oven inside the west wing.
 	state.oven = ModelFactory.oven(theme.accentColor, model, localCf(theme, OVEN))
-	local _, ovenSign = ModelFactory.infoSign(model, toWorld(theme, OVEN + Vector3.new(0, 0, -5), 4))
+	local _, ovenSign = ModelFactory.infoSign(model, toWorld(theme, OVEN + Vector3.new(0, 0, -4), 4))
 	state.signs.oven = ovenSign
 
-	-- Warehouse: storage pad where crates land.
+	-- Warehouse: storage pad where crates land (east wing interior).
 	state.warehouse = ModelFactory.basePart({
 		Name = "Warehouse",
 		Size = Vector3.new(12, 0.4, 12),
@@ -127,7 +146,7 @@ local function buildShop(state: PlotState, parent)
 		CFrame = localCf(theme, WAREHOUSE),
 		Parent = model,
 	})
-	local _, whSign = ModelFactory.infoSign(model, toWorld(theme, WAREHOUSE + Vector3.new(0, 0, -7), 4), Vector2.new(300, 90))
+	local _, whSign = ModelFactory.infoSign(model, toWorld(theme, WAREHOUSE + Vector3.new(0, 0, 5), 4), Vector2.new(300, 90))
 	state.signs.warehouse = whSign
 
 	-- Van pad: where the delivery van parks between runs.
@@ -142,7 +161,7 @@ local function buildShop(state: PlotState, parent)
 	local _, vanSign = ModelFactory.infoSign(model, toWorld(theme, VAN_PAD + Vector3.new(0, 0, -6), 4))
 	state.signs.van = vanSign
 
-	-- Expansion pads.
+	-- Expansion pads around the work yard.
 	for i, offset in EXPANSION_OFFSETS do
 		local pad = ModelFactory.basePart({
 			Name = "ExpansionPad" .. i,
@@ -155,13 +174,15 @@ local function buildShop(state: PlotState, parent)
 		table.insert(state.expansionPads, pad)
 	end
 
+	-- Patio seating in front of the storefront, under the awning.
+	ModelFactory.tableSet(model, toWorld(theme, STREET + Vector3.new(-11, 0, 0), 1.3), theme.accentColor)
+	ModelFactory.tableSet(model, toWorld(theme, STREET + Vector3.new(11, 0, 0), 1.3), theme.accentColor)
+
 	PlotManager.WireInteractions(state)
 end
 
 -- All per-plot purchase prompts. Labels are refreshed by Refresh.
 function PlotManager.WireInteractions(state: PlotState)
-	-- All per-plot purchase prompts. Labels are refreshed by Refresh.
-
 	local function ownedPrompt(name: string, part: BasePart, action: string, object: string, handler)
 		local prompt = ModelFactory.prompt(part, action, object, 0.35)
 		prompt.Triggered:Connect(function(player)
@@ -261,7 +282,8 @@ function PlotManager.Claim(player: Player, state: PlotState)
 	-- Hide the claim prompt once owned.
 	local claimPrompt = state.prompts.claim :: ProximityPrompt
 	claimPrompt.Enabled = false
-	Net.Announce:FireClient(player, ("Welcome to %s!"):format(state.theme.name), themeColor(state))
+	local district = Config.City.Districts[state.theme.district]
+	Net.Announce:FireClient(player, ("Welcome to %s in %s!"):format(state.theme.name, district.name), themeColor(state))
 	PlotManager.Refresh(player, state)
 end
 
@@ -494,12 +516,25 @@ function PlotManager.Heist(player: Player, state: PlotState)
 		def.baseSuccessChance - (victimData.upgrades.security - 1) * def.securityPenaltyPerTier
 	)
 	local theme = state.theme
+	-- The crew walks in through the storefront, then to the warehouse.
 	local spy = ModelFactory.customer(Color3.fromRGB(40, 40, 45), state.model, toWorld(theme, STREET))
 	spy.Name = "HeistCrew"
-	ModelFactory.tweenModel(spy, toWorld(theme, WAREHOUSE), 3)
-	task.delay(3.5, function()
+	ModelFactory.walkPath(spy, {
+		toWorld(theme, DOOR),
+		toWorld(theme, WAREHOUSE),
+	}, 9)
+	task.delay(6, function()
 		if spy and spy.Parent then
-			spy:Destroy()
+			-- Flee back out through the door.
+			ModelFactory.walkPath(spy, {
+				toWorld(theme, DOOR),
+				toWorld(theme, STREET),
+			}, 14)
+			task.delay(4, function()
+				if spy and spy.Parent then
+					spy:Destroy()
+				end
+			end)
 		end
 		local victimStillHere = state.owner == victim and victim.Parent ~= nil
 		if not victimStillHere then
@@ -648,6 +683,7 @@ function PlotManager.Refresh(player: Player, state: PlotState)
 	end
 
 	-- Signs.
+	local district = Config.City.Districts[theme.district]
 	local capacity = Config.WarehouseTiers[data.upgrades.warehouse].capacity
 	local current = 0
 	for _, n in data.ingredients do
@@ -662,7 +698,7 @@ function PlotManager.Refresh(player: Player, state: PlotState)
 	state.signs.oven.Text = ovenTier
 		and ("Oven: %s\nMarketing: %s"):format(ovenTier.name, Config.MarketingTiers[data.upgrades.marketing].name)
 		or "No oven yet!"
-	state.signs.van.Text = ("Van ready: %d pizzas\nDeliver to city zones!"):format(data.readyPizzas)
+	state.signs.van.Text = ("Van ready: %d pizzas\nDeliver to %s!"):format(data.readyPizzas, district.name)
 	state.signs.theme.Text = ("%s\nOwner: %s"):format(theme.name, player.Name)
 end
 
@@ -683,8 +719,26 @@ function PlotManager.LocalToWorld(state: PlotState, offset: Vector3): CFrame
 	return toWorld(state.theme, offset)
 end
 
+-- Minimap data: one entry per plot (district + owner name).
+function PlotManager.GetPlotsSummary(): { { any } }
+	local out = {}
+	for _, entry in plots do
+		local state = entry.state
+		table.insert(out, {
+			district = state.theme.district,
+			themeId = state.theme.id,
+			themeName = state.theme.name,
+			ownerName = if state.owner then state.owner.Name else nil,
+		})
+	end
+	return out
+end
+
 -- Useful anchor points for other services.
-PlotManager.Points = { STREET = STREET, COUNTER = COUNTER, OVEN = OVEN, WAREHOUSE = WAREHOUSE, VAN_PAD = VAN_PAD }
+PlotManager.Points = {
+	STREET = STREET, COUNTER = COUNTER, OVEN = OVEN, WAREHOUSE = WAREHOUSE,
+	VAN_PAD = VAN_PAD, DOOR = DOOR,
+}
 
 function PlotManager.Init(ctx)
 	ctx.Services.PlotManager = PlotManager
@@ -693,26 +747,9 @@ function PlotManager.Init(ctx)
 	Economy = ctx.Services.Economy
 	DataManager = ctx.Services.DataManager
 	ModelFactory = ctx.Services.ModelFactory
+	CityMap = ctx.Services.CityMap
 
-	local world = Instance.new("Model")
-	world.Name = "PizzaTycoonWorld"
-	world.Parent = workspace
-
-	ModelFactory.basePart({
-		Name = "Ground",
-		Size = Vector3.new(400, 1, 400),
-		Color = Color3.fromRGB(90, 130, 80),
-		Material = Enum.Material.Grass,
-		CFrame = CFrame.new(0, -0.5, 0),
-		Parent = world,
-	})
-
-	local spawnLocation = Instance.new("SpawnLocation")
-	spawnLocation.Size = Vector3.new(12, 1, 12)
-	spawnLocation.CFrame = CFrame.new(0, 0.5, -110)
-	spawnLocation.Anchored = true
-	spawnLocation.Neutral = true
-	spawnLocation.Parent = world
+	local world = CityMap.World
 
 	for _, theme in Config.Plots do
 		local state = buildBasePlot(theme, world)
@@ -730,7 +767,7 @@ function PlotManager.Init(ctx)
 end
 
 function PlotManager.ResetPlot(state: PlotState)
-	-- Tear the owned plot down and restore the base claimable plot.
+	-- Tear the owned plot down and restore the base claimable lot.
 	state.model:Destroy()
 	local entry
 	for _, e in plots do
@@ -740,8 +777,8 @@ function PlotManager.ResetPlot(state: PlotState)
 		end
 	end
 	if entry then
-		local parent = workspace:FindFirstChild("PizzaTycoonWorld")
-		entry.state = buildBasePlot(entry.theme, parent :: Instance)
+		local parent = CityMap.World
+		entry.state = buildBasePlot(entry.theme, parent)
 	end
 end
 

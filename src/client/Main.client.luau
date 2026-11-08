@@ -11,6 +11,7 @@ local Client = script
 local modules = {
 	"controllers/UIController",
 	"controllers/EffectsController",
+	"controllers/CityMapController",
 }
 
 -- Case-insensitive child lookup on an instance.

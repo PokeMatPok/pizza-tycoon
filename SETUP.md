@@ -18,10 +18,13 @@ Two ways to get the game running. **Option A (no tools needed)** works fully ins
          ModelFactory  (ModuleScript)
          DataManager   (ModuleScript)
          Economy       (ModuleScript)
+         CityMap       (ModuleScript)
          PlotManager   (ModuleScript)
          Production    (ModuleScript)
          OrderSystem   (ModuleScript)
          DeliveryZones (ModuleScript)
+         Pedestrians   (ModuleScript)
+         Traffic       (ModuleScript)
          EventManager  (ModuleScript)
          Leaderboards  (ModuleScript)
    StarterPlayer
@@ -29,15 +32,16 @@ Two ways to get the game running. **Option A (no tools needed)** works fully ins
        Client          (Folder)
          Main          (LocalScript)
          controllers   (Folder)
-           UIController      (ModuleScript)
+           UIController       (ModuleScript)
            EffectsController  (ModuleScript)
+           CityMapController  (ModuleScript)
    ```
 3. For each `.luau` file in `src/`, open the matching script in Studio and paste the file contents:
    - `Main.server.luau` → the `Main` Script
    - `Main.client.luau` → the `Main` LocalScript
    - every other `*.luau` → the matching ModuleScript
 4. In Studio settings, enable **Game Settings → Security → Enable Studio Access to API Services** so DataStores work in Studio test.
-5. Press **Play**. You spawn near the city center; walk to one of the three themed plots and use the **Buy Plot** prompt.
+5. Press **Play**. You spawn near the city center; use the **CITY MAP** button on the right edge to pick a district (click a district, then Teleport), and use the **Buy Restaurant** prompt on its lot.
 
 If something is misplaced, the Main scripts now print a clear warning telling you exactly which script name they could not find, instead of hanging.
 
@@ -53,17 +57,17 @@ Then in Studio: open the Rojo plugin → Connect. Save a file in Zed and it sync
 
 ## How to play / verify it works
 
-1. You start with **$500**. Buy a plot ($250).
+1. You start with **$500**. Pick a district with the **CITY MAP** button (right edge), teleport there, and buy its restaurant (prices range from $175 in Foundry Flats to $550 in Skyline Heights).
 2. Order a **Basic Supplies** shipment at the warehouse (crates arrive after ~12s).
 3. Buy **Stone Oven** ($100) at the oven. Pizzas start baking automatically.
 4. Customers walk to your counter and buy ready pizzas (watch the green **+$** popups).
-5. Hire a **Driver** ($150), then run pizzas (10 per van) to the shared **city zones**. Every 60s each zone pays out its pot, split by contribution share — compete with other players!
+5. Hire a **Driver** ($150), then run pizzas (10 per van) to the district delivery zones ($ markers on the map). Every 60s each zone pays out its pot (richer districts = bigger pots), split by contribution share — compete with other players!
 6. Compete harder: use the **Send Heist Crew** prompt on a rival's warehouse to steal ingredients (fails against high security — and you pay them).
 7. Watch out for **Thief Hour**, ride **Rush Hour** and the **Pizza Festival** events.
 
 ## Where the 3D models come from
 
-Every prop (pizzas, crates, ovens, vans, customers, zones) is generated at runtime by
+Every prop (buildings, cars, pedestrians, trees, pizzas, crates, ovens, vans, zones) is generated at runtime by
 `src/server/services/ModelFactory.luau` — zero uploaded assets required. To upgrade to
 real meshes later, see `README.md` → "Swapping in real 3D models".
 

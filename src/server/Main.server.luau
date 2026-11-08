@@ -13,10 +13,13 @@ local servicesToLoad = {
 	"services/ModelFactory",
 	"services/DataManager",
 	"services/Economy",
+	"services/CityMap",
 	"services/PlotManager",
 	"services/Production",
 	"services/OrderSystem",
 	"services/DeliveryZones",
+	"services/Pedestrians",
+	"services/Traffic",
 	"services/EventManager",
 	"services/Leaderboards",
 }
@@ -89,7 +92,7 @@ end
 
 if #missing > 0 then
 	warn("[PizzaTycoon] Could not load: " .. table.concat(missing, ", "))
-	warn("[PizzaTycoon] Expected structure: Server folder containing Main (Script) + 'services' folder with 9 ModuleScripts (ModelFactory, DataManager, Economy, PlotManager, Production, OrderSystem, DeliveryZones, EventManager, Leaderboards).")
+	warn("[PizzaTycoon] Expected structure: Server folder containing Main (Script) + 'services' folder with 12 ModuleScripts (ModelFactory, DataManager, Economy, CityMap, PlotManager, Production, OrderSystem, DeliveryZones, Pedestrians, Traffic, EventManager, Leaderboards).")
 end
 
 -- Phase 1: Init. Services register themselves in ctx.Services and may

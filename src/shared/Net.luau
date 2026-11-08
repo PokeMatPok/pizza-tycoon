@@ -14,6 +14,9 @@ local remoteNames = {
 	"CashFloat", -- {position, amount} floating +$ effect
 	"LeaderboardUpdate", -- {entries = {{name, revenue}}}
 	"ZoneUpdate", -- {zoneId, contributions = {{playerName, amount}}}
+	"CityState", -- minimap data: traffic level, plot owners, player blips
+	-- RemoteEvents (client -> server)
+	"TeleportRequest", -- districtId: fast travel from the city map
 }
 
 local folder: Folder

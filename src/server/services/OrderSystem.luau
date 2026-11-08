@@ -1,8 +1,9 @@
 --!strict
--- OrderSystem: AI customers walk to your counter, buy one pizza of the
--- active recipe (paying its price * marketing price multiplier * event
--- multiplier), or leave grumpy if you have no stock. Spawn rate scales
--- with marketing tier, expansions and active events.
+-- OrderSystem: AI customers walk in through the storefront, buy one
+-- pizza of the active recipe (paying recipe price * marketing price
+-- multiplier * district price multiplier * event multiplier), or leave
+-- grumpy if there is no stock. Spawn rate scales with marketing tier,
+-- expansions, district foot traffic and active events.
 
 local OrderSystem = {}
 
@@ -19,19 +20,27 @@ local SHIRT_COLORS = {
 	Color3.fromRGB(160, 90, 180),
 }
 
-local function spawnRatePerSec(data): number
+local function districtOf(state)
+	return Config.City.Districts[state.theme.district]
+end
+
+local function spawnRatePerSec(state, data): number
+	local district = districtOf(state)
 	local rate = (Config.CustomerBaseRatePerMin / 60)
 		* Config.MarketingTiers[data.upgrades.marketing].customerMult
 		* (1 + 0.10 * data.expansions)
+		* (district and district.customerMult or 1)
 	if currentEvent then
 		rate *= currentEvent.customerMult
 	end
 	return rate
 end
 
-local function customerSalePrice(data): number
+local function customerSalePrice(state, data): number
+	local district = districtOf(state)
 	local recipe = Config.Recipes[data.activeRecipe]
 	local price = recipe.price * Config.MarketingTiers[data.upgrades.marketing].priceMult
+		* (district and district.priceMult or 1)
 	if currentEvent then
 		price *= currentEvent.priceMult
 	end
@@ -53,7 +62,7 @@ local function serveCustomer(player: Player, state, data)
 	if not recipe or data.readyPizzas < 1 then
 		return false
 	end
-	local price = customerSalePrice(data)
+	local price = customerSalePrice(state, data)
 	DataManager.Mutate(player, function(d)
 		d.readyPizzas -= 1
 		d.totalPizzasSold += 1
@@ -68,17 +77,27 @@ local function serveCustomer(player: Player, state, data)
 	return true
 end
 
+-- Walk a model through CFrames sequentially; aborts if destroyed.
+local function walkThrough(model: Model, points: { CFrame }, studsPerSec: number): boolean
+	for i = 2, #points do
+		if not model.Parent then
+			return false
+		end
+		local dist = (points[i - 1].Position - points[i].Position).Magnitude
+		local tween = ModelFactory.tweenModel(model, points[i], math.max(0.15, dist / studsPerSec))
+		tween.Completed:Wait()
+	end
+	return model.Parent ~= nil
+end
+
 local function spawnCustomer(player: Player, state, data)
 	local from = PlotManager.LocalToWorld(state, PlotManager.Points.STREET)
+	local door = PlotManager.LocalToWorld(state, PlotManager.Points.DOOR)
 	local atCounter = PlotManager.LocalToWorld(state, PlotManager.Points.COUNTER + Vector3.new(0, 0, 3))
 	local shirt = SHIRT_COLORS[math.random(#SHIRT_COLORS)]
 	local customer = ModelFactory.customer(shirt, state.model, from * CFrame.Angles(0, math.rad(180), 0))
-	ModelFactory.tweenModel(customer, atCounter, 2.5)
-	task.delay(2.6, function()
-		if not customer.Parent or not state.model.Parent then
-			if customer then
-				customer:Destroy()
-			end
+	task.spawn(function()
+		if not walkThrough(customer, { from, door, atCounter }, 6) then
 			return
 		end
 		local ok = false
@@ -90,17 +109,16 @@ local function spawnCustomer(player: Player, state, data)
 		end
 		if ok then
 			local pizza = ModelFactory.pizza(recipeColorFor(data), recipeToppingFor(data), state.model, atCounter * CFrame.new(0, 1.4, 0) * CFrame.Angles(0, math.rad(90), 0))
-			ModelFactory.tweenModel(customer, from, 2.5)
 			task.delay(0.8, function()
 				if pizza and pizza.Parent then
 					pizza:Destroy()
 				end
 			end)
 		else
-			ModelFactory.tweenModel(customer, from, 2.5)
 			Net.Announce:FireClient(player, "A customer left: no ready pizzas!", Color3.fromRGB(255, 200, 100))
 		end
-		task.delay(2.6, function()
+		walkThrough(customer, { atCounter, door, from }, 6)
+		task.delay(3, function()
 			if customer and customer.Parent then
 				customer:Destroy()
 			end
@@ -133,7 +151,7 @@ function OrderSystem.Start(ctx)
 				local state = PlotManager.GetPlot(player)
 				local data = DataManager.Get(player)
 				if state and data and state.owner == player then
-					accumulators[player] = (accumulators[player] or 0) + spawnRatePerSec(data)
+					accumulators[player] = (accumulators[player] or 0) + spawnRatePerSec(state, data)
 					while accumulators[player] >= 1 do
 						accumulators[player] -= 1
 						local ok, err = pcall(spawnCustomer, player, state, data)
