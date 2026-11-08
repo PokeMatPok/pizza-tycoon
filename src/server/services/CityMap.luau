@@ -329,38 +329,97 @@ local function buildDistrictBuildings(world: Model)
 		table.insert(reserved, { district.plaza.X, district.plaza.Z, 24 })
 
 		-- Fill the block with a jittered grid of buildings + greenery.
-		-- Real scale: buildings are large relative to the 5-stud avatar.
+		-- Real scale: buildings are large relative to the 5-stud avatar,
+		-- and dense enough that you can't see through a block to the
+		-- parallel streets: main buildings nearly fill their cell, and a
+		-- second infill pass drops mid-size buildings between the columns.
 		local margin = Config.City.RoadHalf + Config.City.SidewalkWidth + 2
 		local x0, x1 = r.x0 + margin, r.x1 - margin
 		local z0, z1 = r.z0 + margin, r.z1 - margin
 		local cell = if district.style == "downtown" then 66 elseif district.style == "industrial" then 60 else 56
-		local treeChance = if district.style == "suburbs" then 0.5 elseif district.style == "waterfront" then 0.12 else 0.25
+		local treeChance = if district.style == "suburbs" then 0.45 elseif district.style == "waterfront" then 0.12 else 0.2
 
+		local style = district.style
+
+		local function mainSize(): (number, number)
+			if style == "downtown" then
+				return rng:NextNumber(40, 52), rng:NextNumber(34, 46)
+			elseif style == "industrial" then
+				return rng:NextNumber(40, 48), rng:NextNumber(30, 40)
+			elseif style == "oldtown" then
+				return rng:NextNumber(34, 42), rng:NextNumber(28, 36)
+			elseif style == "suburbs" then
+				return rng:NextNumber(30, 38), rng:NextNumber(26, 32)
+			end
+			return rng:NextNumber(26, 34), rng:NextNumber(22, 28)
+		end
+
+		local function infillSize(): (number, number)
+			if style == "downtown" then
+				return rng:NextNumber(18, 28), rng:NextNumber(16, 26)
+			elseif style == "industrial" then
+				return rng:NextNumber(26, 36), rng:NextNumber(22, 30)
+			elseif style == "oldtown" then
+				return rng:NextNumber(16, 26), rng:NextNumber(14, 22)
+			elseif style == "suburbs" then
+				return rng:NextNumber(16, 24), rng:NextNumber(14, 20)
+			end
+			return rng:NextNumber(12, 20), rng:NextNumber(10, 16)
+		end
+
+		-- Placed rects (buildings, trees) so infill never merges into
+		-- something already standing.
+		local placed: { { number } } = {}
+		local function overlapsPlaced(cx: number, cz: number, hx: number, hz: number): boolean
+			for _, p in placed do
+				if math.abs(cx - p[1]) < hx + p[3] and math.abs(cz - p[2]) < hz + p[4] then
+					return true
+				end
+			end
+			return false
+		end
+
+		local function placeTree(cx: number, cz: number)
+			if style == "waterfront" then
+				ModelFactory.palm(world, CFrame.new(cx, 0.1, cz), rng)
+			else
+				ModelFactory.tree(world, CFrame.new(cx, 0.1, cz), rng)
+			end
+			table.insert(placed, { cx, cz, 5, 5 })
+		end
+
+		-- Main grid pass.
 		for gx = x0 + 14, x1 - 14, cell do
 			for gz = z0 + 14, z1 - 14, cell do
-				local cx = gx + rng:NextNumber(-5, 5)
-				local cz = gz + rng:NextNumber(-5, 5)
-				local w, d
-				if district.style == "downtown" then
-					w, d = rng:NextNumber(30, 44), rng:NextNumber(26, 38)
-				elseif district.style == "industrial" then
-					w, d = rng:NextNumber(40, 54), rng:NextNumber(28, 40)
-				elseif district.style == "oldtown" then
-					w, d = rng:NextNumber(24, 32), rng:NextNumber(22, 30)
-				elseif district.style == "suburbs" then
-					w, d = rng:NextNumber(22, 30), rng:NextNumber(20, 26)
-				else
-					w, d = rng:NextNumber(18, 26), rng:NextNumber(16, 24)
-				end
+				local w, d = mainSize()
+				-- Jitter, clamped so the building stays inside the block.
+				local cx = math.clamp(gx + rng:NextNumber(-5, 5), x0 + w / 2 + 1, x1 - w / 2 - 1)
+				local cz = math.clamp(gz + rng:NextNumber(-5, 5), z0 + d / 2 + 1, z1 - d / 2 - 1)
 				if not overlapsReserved(cx, cz, w / 2 + 2, d / 2 + 2, reserved) then
 					if rng:NextNumber() < treeChance then
-						if district.style == "waterfront" then
-							ModelFactory.palm(world, CFrame.new(cx, 0.1, cz), rng)
-						else
-							ModelFactory.tree(world, CFrame.new(cx, 0.1, cz), rng)
-						end
+						placeTree(cx, cz)
 					else
-						ModelFactory.building(district.style, world, CFrame.new(cx, 0.1, cz), w, d, rng)
+						ModelFactory.building(style, world, CFrame.new(cx, 0.1, cz), w, d, rng)
+						table.insert(placed, { cx, cz, w / 2 + 2, d / 2 + 2 })
+					end
+				end
+			end
+		end
+
+		-- Infill pass: mid-size buildings between the grid columns.
+		local infillChance = if style == "suburbs" then 0.5 elseif style == "industrial" then 0.65 else 0.85
+		for gx = x0 + 14 + cell / 2, x1 - 14, cell do
+			for gz = z0 + 14 + cell / 2, z1 - 14, cell do
+				local w, d = infillSize()
+				local cx = math.clamp(gx + rng:NextNumber(-4, 4), x0 + w / 2 + 1, x1 - w / 2 - 1)
+				local cz = math.clamp(gz + rng:NextNumber(-4, 4), z0 + d / 2 + 1, z1 - d / 2 - 1)
+				if not overlapsReserved(cx, cz, w / 2 + 2, d / 2 + 2, reserved)
+					and not overlapsPlaced(cx, cz, w / 2 + 3, d / 2 + 3) then
+					if rng:NextNumber() < infillChance then
+						ModelFactory.building(style, world, CFrame.new(cx, 0.1, cz), w, d, rng)
+						table.insert(placed, { cx, cz, w / 2 + 2, d / 2 + 2 })
+					elseif rng:NextNumber() < treeChance then
+						placeTree(cx, cz)
 					end
 				end
 			end

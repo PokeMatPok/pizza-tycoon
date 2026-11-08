@@ -40,7 +40,7 @@ local boardList: Frame
 -- Rounded card with hairline stroke, like a web surface component.
 local function card(props: { [string]: any }): Frame
 	local f = Instance.new("Frame")
-	f.BackgroundColor = COLOR.surface
+	f.BackgroundColor3 = COLOR.surface
 	f.BackgroundTransparency = 0.06
 	f.BorderSizePixel = 0
 	for k, v in props do
