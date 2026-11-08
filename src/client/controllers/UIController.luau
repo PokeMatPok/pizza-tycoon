@@ -246,7 +246,7 @@ function UIController.OnState(state)
 	cashLabel.Text = "$" .. tostring(state.cash)
 	-- Count-up tween on the cash number, like a web dashboard counter.
 	local target = tonumber(state.cash) or 0
-	local shown = tonumber((cashLabel.Text:gsub("[%$%,]", ""), "10")) or 0
+	local shown = tonumber((cashLabel.Text:gsub("[%$%,]", "")), 10) or 0
 	if target ~= shown then
 		local number = Instance.new("NumberValue")
 		number.Value = shown
