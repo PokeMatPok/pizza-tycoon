@@ -350,6 +350,11 @@ Config.Theft = {
 	stealAmount = 6,
 }
 
+-- Accounts allowed to use the admin panel. The client hides the panel
+-- for everyone else, and the server independently validates every
+-- command against this list, so non-admins can't trigger anything.
+Config.AdminUserIds = { 11177403102 }
+
 Config.CustomerBaseRatePerMin = 6 -- customers per minute at marketing tier 1, full appeal
 
 Config.Events = {

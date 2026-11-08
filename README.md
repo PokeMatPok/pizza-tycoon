@@ -51,6 +51,12 @@ generated in code (zero meshes).
   randomly and scale customers, prices, zone pots, theft AND street
   traffic.
 - **Meta:** in-memory session top-10 by revenue + all-time OrderedDataStore.
+- **Admin panel:** accounts in `Config.AdminUserIds` (see
+  `src/shared/Config.luau`) get a 🛡 Admin button top-left: set/add cash,
+  ingredients, ready pizzas, unlock recipes, jump any upgrade/staff tier,
+  set expansions, start/end events, teleport, save, wipe own data, release
+  plot. The panel only builds for listed ids AND the server re-validates
+  every command, so it can't be triggered by anyone else.
 
 ## Architecture
 
@@ -72,10 +78,12 @@ src/server/services/
   Traffic         road NPC cars (near-player culling, rush waves)
   EventManager    global event rotation
   Leaderboards    session top-10 broadcast + all-time OrderedDataStore
+  AdminService    server-validated admin commands (Config.AdminUserIds)
 src/client/
   Main.client.luau + UIController (HUD, banner, leaderboard)
                   + EffectsController (floating +$ text)
                   + CityMapController (CITY button, live minimap, fast travel)
+                  + AdminController (panel, built only for admin accounts)
 ```
 
 The Main bootstrap scripts are paste-tolerant: they resolve `services` /

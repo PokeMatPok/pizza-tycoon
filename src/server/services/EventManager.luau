@@ -34,6 +34,26 @@ function EventManager.GetCurrent()
 	return current
 end
 
+-- Admin controls. A forced event is NOT auto-ended by the rotation loop
+-- (the loop's endEvent guard only clears its own event), so it stays
+-- active until the admin ends it or another event replaces it.
+function EventManager.ForceStart(eventId: string): boolean
+	local event = Config.Events[eventId]
+	if not event then
+		return false
+	end
+	startEvent(event)
+	return true
+end
+
+function EventManager.Clear()
+	if current then
+		local name = current.name
+		current = nil
+		Net.Announce:FireAllClients("Event over: " .. name, Color3.fromRGB(180, 180, 180))
+	end
+end
+
 function EventManager.Init(ctx)
 	ctx.Services.EventManager = EventManager
 	Config = ctx.Config

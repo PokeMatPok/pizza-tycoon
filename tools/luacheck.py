@@ -1,112 +1,133 @@
 #!/usr/bin/env python3
-"""Structural Luau block-balance checker (strings/comments stripped).
+"""Structural Lua/Luau sanity checker for the pizza-tycoon project.
 
-Usage: python3 tools/luacheck.py <project-root>
-Checks every .luau under the root for balanced blocks
-(function/for/while/repeat/if/do vs end/until) and balanced brackets.
+Strips strings and comments, then verifies that:
+- block keywords balance (function/for/while/repeat/if-statement/do
+  open, end/until close),
+- brackets/parens/braces balance.
+
+It deliberately does NOT attempt a full parse, so expression-level
+errors (wrong property name, misplaced paren inside an expression)
+can slip through: always re-read new code carefully as well.
 """
-import re, sys, os
+import re
+import sys
+import pathlib
 
-def strip(code: str) -> str:
+TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+VALID_CLOSERS = {
+    "end": ("function", "if", "for", "while", "do"),
+    "until": ("repeat",),
+}
+
+# an `if` whose previous non-space character is one of these (or whose
+# previous word is `return`) is the Luau if-expression, not a statement
+EXPR_IF_PREV_CHARS = ("=", "(", ",", "{", "[")
+
+
+def strip(src: str) -> str:
+    # Strings and comments become placeholder tokens so that constructs
+    # like `if` following a line that ends in a string literal are still
+    # recognized as statements (the placeholder's last char is a letter).
     out = []
-    i, n = 0, len(code)
+    i, n = 0, len(src)
     while i < n:
-        c = code[i]
-        if c == '-' and i + 1 < n and code[i+1] == '-':
-            m = re.match(r'\[(=*)\[', code[i+2:])
-            if m:
-                closer = ']' + m.group(1) + ']'
-                k = code.find(closer, i + 2 + m.end())
-                i = (k + len(closer)) if k != -1 else n
-            else:
-                k = code.find('\n', i)
-                i = k if k != -1 else n
-        elif c in ('"', "'"):
-            out.append(' @ ')
-            q = c; i += 1
-            while i < n:
-                if code[i] == '\\': i += 2; continue
-                if code[i] == q: i += 1; break
-                if code[i] == '\n': out.append('\n'); i += 1; continue
-                i += 1
-        elif c == '[':
-            m = re.match(r'\[(=*)\[', code[i:])
-            if m:
-                closer = ']' + m.group(1) + ']'
-                k = code.find(closer, i + m.end())
-                body = code[i:(k + len(closer)) if k != -1 else n]
-                out.append(' @ ' + ('\n' * body.count('\n')))
-                i = (k + len(closer)) if k != -1 else n
-            else:
-                out.append(c); i += 1
-        else:
-            out.append(c); i += 1
-    return ''.join(out)
-
-KEYWORDS = {'function','if','for','while','repeat','do','end','until','then','else','elseif','return','local'}
-EXPR_PREFIX = {'=', '(', ',', '{', '[', 'return'}
-
-def check(path: str):
-    code = strip(open(path, encoding='utf-8').read())
-    depth = 0; expect_do = False; prev_word = ''
-    line = 1; stack_line = []; errors = []
-    i = 0; n = len(code)
-    while i < n:
-        c = code[i]
-        if c == '\n': line += 1; i += 1; continue
-        if c.isspace(): i += 1; continue
-        m = re.match(r'[A-Za-z_][A-Za-z0-9_]*', code[i:])
-        if m:
-            word = m.group(0); i += len(word)
-            if word in KEYWORDS:
-                if word in ('function','for','while','repeat'):
-                    depth += 1; stack_line.append(line)
-                    if word in ('for','while'): expect_do = True
-                elif word == 'do':
-                    if expect_do: expect_do = False
-                    else: depth += 1; stack_line.append(line)
-                elif word == 'if':
-                    if prev_word not in EXPR_PREFIX:
-                        depth += 1; stack_line.append(line)
-                elif word in ('end','until'):
-                    depth -= 1
-                    if stack_line: stack_line.pop()
-                    if depth < 0:
-                        errors.append(f"line {line}: '{word}' closes too much")
-                prev_word = word
-            else:
-                prev_word = word
+        if src[i:i + 4] == "--[[":
+            j = src.find("]]", i + 4)
+            out.append(" ")
+            i = n if j == -1 else j + 2
             continue
-        prev_word = c
+        if src[i:i + 2] == "--":
+            j = src.find("\n", i)
+            out.append(" ")
+            i = n if j == -1 else j
+            continue
+        c = src[i]
+        if c in "\"'":
+            j = i + 1
+            while j < n:
+                if src[j] == "\\":
+                    j += 2
+                    continue
+                if src[j] == c:
+                    break
+                j += 1
+            out.append("S")
+            i = j + 1
+            continue
+        if src[i:i + 2] == "[[":
+            j = src.find("]]", i + 2)
+            out.append("S")
+            i = n if j == -1 else j + 2
+            continue
+        out.append(c)
         i += 1
-    if depth != 0:
-        where = stack_line[-1] if stack_line else '?'
-        errors.append(f"unbalanced: depth {depth} at EOF (last open block near line {where})")
-    depthb = {'(':0,'[':0,'{':0}
-    closer = {')':'(', ']':'[', '}':'{'}
-    for ch in code:
-        if ch in depthb: depthb[ch] += 1
-        elif ch in closer: depthb[closer[ch]] -= 1
-    for k, v in depthb.items():
-        if v != 0: errors.append(f"unbalanced '{k}': {v}")
+    return "".join(out)
+
+
+def line_of(src: str, pos: int) -> int:
+    return src.count("\n", 0, pos) + 1
+
+
+def check(path: pathlib.Path) -> list:
+    src = strip(path.read_text(encoding="utf-8"))
+    errors = []
+    stack = []  # [kind, pos, needs_do]
+    prev_word = ""
+    for m in TOKEN.finditer(src):
+        word = m.group(0)
+        before = src[:m.start()].rstrip()
+        prev_char = before[-1] if before else ""
+
+        if word in ("end", "until"):
+            if not stack:
+                errors.append(f"{path}:{line_of(src, m.start())}: '{word}' with empty block stack")
+            elif stack[-1][0] not in VALID_CLOSERS[word]:
+                errors.append(f"{path}:{line_of(src, m.start())}: '{word}' closes '{stack[-1][0]}' opened at line {line_of(src, stack[-1][1])}")
+                stack.pop()
+            else:
+                stack.pop()
+        elif word == "if":
+            if not (prev_char in EXPR_IF_PREV_CHARS or prev_word == "return"):
+                stack.append(["if", m.start(), False])
+        elif word in ("function", "repeat"):
+            stack.append([word, m.start(), False])
+        elif word in ("for", "while"):
+            stack.append([word, m.start(), True])
+        elif word == "do":
+            if stack and stack[-1][0] in ("for", "while") and stack[-1][2]:
+                stack[-1][2] = False
+            else:
+                stack.append(["do", m.start(), False])
+        if word.isalpha():
+            prev_word = word
+        else:
+            prev_word = prev_word  # tokens are always words here
+
+    for kind, pos, _ in stack:
+        errors.append(f"{path}:{line_of(src, pos)}: unclosed '{kind}'")
+
+    for a, b in (("(", ")"), ("[", "]"), ("{", "}")):
+        ca, cb = src.count(a), src.count(b)
+        if ca != cb:
+            errors.append(f"{path}: unbalanced {a}{b} ({ca} vs {cb})")
     return errors
 
-def main():
-    root = sys.argv[1] if len(sys.argv) > 1 else '.'
-    failures = 0
-    for dirpath, _, files in os.walk(root):
-        for fn in sorted(files):
-            if fn.endswith('.luau'):
-                p = os.path.join(dirpath, fn)
-                errs = check(p)
-                rel = os.path.relpath(p, root)
-                if errs:
-                    failures += 1
-                    print(f"FAIL {rel}")
-                    for e in errs: print(f"   {e}")
-                else:
-                    print(f"ok   {rel}")
-    sys.exit(1 if failures else 0)
 
-if __name__ == '__main__':
+def main():
+    root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+    files = sorted(p for p in root.rglob("*.luau") if "tools" not in p.parts)
+    bad = 0
+    for f in files:
+        errors = check(f)
+        if errors:
+            bad += 1
+            for e in errors:
+                print(e)
+    print(f"{len(files) - bad}/{len(files)} files OK")
+    sys.exit(1 if bad else 0)
+
+
+if __name__ == "__main__":
     main()

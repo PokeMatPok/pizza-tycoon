@@ -22,6 +22,7 @@ local servicesToLoad = {
 	"services/Traffic",
 	"services/EventManager",
 	"services/Leaderboards",
+	"services/AdminService",
 }
 
 -- Case-insensitive child lookup on an instance.
@@ -92,7 +93,7 @@ end
 
 if #missing > 0 then
 	warn("[PizzaTycoon] Could not load: " .. table.concat(missing, ", "))
-	warn("[PizzaTycoon] Expected structure: Server folder containing Main (Script) + 'services' folder with 12 ModuleScripts (ModelFactory, DataManager, Economy, CityMap, PlotManager, Production, OrderSystem, DeliveryZones, Pedestrians, Traffic, EventManager, Leaderboards).")
+	warn("[PizzaTycoon] Expected structure: Server folder containing Main (Script) + 'services' folder with 13 ModuleScripts (ModelFactory, DataManager, Economy, CityMap, PlotManager, Production, OrderSystem, DeliveryZones, Pedestrians, Traffic, EventManager, Leaderboards, AdminService).")
 end
 
 -- Phase 1: Init. Services register themselves in ctx.Services and may

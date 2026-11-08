@@ -12,6 +12,7 @@ local modules = {
 	"controllers/UIController",
 	"controllers/EffectsController",
 	"controllers/CityMapController",
+	"controllers/AdminController",
 }
 
 -- Case-insensitive child lookup on an instance.

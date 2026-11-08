@@ -15,8 +15,10 @@ local remoteNames = {
 	"LeaderboardUpdate", -- {entries = {{name, revenue}}}
 	"ZoneUpdate", -- {zoneId, contributions = {{playerName, amount}}}
 	"CityState", -- minimap data: traffic level, plot owners, player blips
+	"AdminState", -- admin panel snapshot (only ever sent to admins)
 	-- RemoteEvents (client -> server)
 	"TeleportRequest", -- districtId: fast travel from the city map
+	"AdminCommand", -- {cmd, args}: admin panel actions, server-validated
 }
 
 local folder: Folder

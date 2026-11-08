@@ -213,4 +213,20 @@ function DataManager.SaveNow(player: Player): boolean
 	return saveData(player)
 end
 
+-- Admin wipe: remove the player's stored entry entirely and hand them a
+-- fresh session (identical to a brand-new player). Synchronous so the
+-- admin panel can confirm afterwards.
+function DataManager.Wipe(player: Player): boolean
+	local key = keyFor(player)
+	local ok = pcall(function()
+		store:RemoveAsync(key)
+	end)
+	if not ok then
+		warn("[PizzaTycoon] wipe failed for " .. player.Name)
+	end
+	sessions[player] = newData()
+	dirty[player] = false
+	return ok
+end
+
 return DataManager

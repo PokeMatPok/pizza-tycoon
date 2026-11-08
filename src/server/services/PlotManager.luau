@@ -796,6 +796,19 @@ function PlotManager.ResetPlot(state: PlotState)
 	end
 end
 
+-- Admin: release the player's plot (if any) back to a claimable lot.
+-- Clearing playerPlots here matters: without it the "one plot per
+-- player" check would block the player from claiming again.
+function PlotManager.Release(player: Player)
+	local state = playerPlots[player]
+	if not state then
+		return false
+	end
+	playerPlots[player] = nil
+	PlotManager.ResetPlot(state)
+	return true
+end
+
 function PlotManager.Start(_ctx)
 	-- Periodically refresh signs of online owners (cheap, small N).
 	task.spawn(function()
