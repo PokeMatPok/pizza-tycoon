@@ -101,8 +101,10 @@ local function sendVan(player: Player, zone: ZoneState)
 	end)
 	zone.inTransit[player] = (zone.inTransit[player] or 0) + 1
 	-- Visual: van drives from plot pad to the zone and back.
+	-- The van builder takes a GROUND frame; the model pivot (body) sits
+	-- 3.7 studs above it, so tween targets must be lifted to pivot height.
 	local van = ModelFactory.van(zone.cfg.mapColor, state.model, PlotManager.LocalToWorld(state, PlotManager.Points.VAN_PAD))
-	local zoneCf = zone.pad:GetPivot() * CFrame.new(0, 1, 12)
+	local zoneCf = zone.pad:GetPivot() * CFrame.new(0, 3.7, 12)
 	task.spawn(function()
 		local tween1 = ModelFactory.tweenModel(van, zoneCf, Config.VanTransitTime)
 		tween1.Completed:Wait()

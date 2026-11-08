@@ -40,17 +40,19 @@ local function toWorld(theme, offset: Vector3, y: number?): CFrame
 end
 
 -- Lot layout (local space; front/street is -Z, lot center is 0,0).
--- The restaurant hall occupies z -44..-8, the work yard z 0..44.
-local STREET = Vector3.new(0, 2, -46)
-local COUNTER = Vector3.new(0, 2, -34)
-local OVEN = Vector3.new(-16, 2, -16)
-local WAREHOUSE = Vector3.new(16, 2, -16)
-local VAN_PAD = Vector3.new(0, 2, 18)
-local DOOR = Vector3.new(0, 2, -30)
+-- Real scale: the platform is 84x114 studs; the restaurant hall
+-- (W64 x D44, 18-stud walls) occupies z -50..-6, the work yard z 8..54.
+-- Y = 1.3 is the walking surface (platform top = 1.25).
+local STREET = Vector3.new(0, 1.3, -58)
+local COUNTER = Vector3.new(0, 1.3, -42)
+local OVEN = Vector3.new(-20, 1.3, -18)
+local WAREHOUSE = Vector3.new(20, 1.3, -18)
+local VAN_PAD = Vector3.new(0, 1.3, 26)
+local DOOR = Vector3.new(0, 1.3, -47)
 local EXPANSION_OFFSETS = {
-	Vector3.new(-22, 2, 20),
-	Vector3.new(22, 2, 20),
-	Vector3.new(0, 2, 34),
+	Vector3.new(-28, 1.3, 30),
+	Vector3.new(28, 1.3, 30),
+	Vector3.new(0, 1.3, 44),
 }
 
 local function localCf(theme, offset: Vector3): CFrame
@@ -64,20 +66,20 @@ local function buildBasePlot(theme, parent): PlotState
 
 	local platform = ModelFactory.basePart({
 		Name = "Platform",
-		Size = Vector3.new(66, 0.5, 92),
+		Size = Vector3.new(84, 0.5, 114),
 		Color = Color3.fromRGB(120, 120, 124),
 		Material = Enum.Material.Concrete,
-		CFrame = yawCf(theme) * CFrame.new(0, 1.0, -2),
+		CFrame = yawCf(theme) * CFrame.new(0, 1.0, -3),
 		Parent = model,
 	})
 	-- Pale stripe marking the building footprint on the empty lot.
 	ModelFactory.basePart({
 		Name = "Footprint",
-		Size = Vector3.new(54, 0.1, 38),
+		Size = Vector3.new(66, 0.1, 46),
 		Color = theme.baseColor,
 		Material = Enum.Material.Concrete,
 		CanCollide = false,
-		CFrame = yawCf(theme) * CFrame.new(0, 1.3, -26),
+		CFrame = yawCf(theme) * CFrame.new(0, 1.3, -28),
 		Parent = model,
 	})
 
@@ -123,49 +125,50 @@ local function buildShop(state: PlotState, parent)
 	local model = state.model
 
 	-- The restaurant building hall: front faces the street (-Z).
-	state.building = ModelFactory.restaurantBuilding(theme.accentColor, theme.baseColor, theme.name, model, localCf(theme, Vector3.new(0, 2, -26)))
+	-- Built at foundation level 1.0 so the floor surface = platform top +0.05.
+	state.building = ModelFactory.restaurantBuilding(theme.accentColor, theme.baseColor, theme.name, model, toWorld(theme, Vector3.new(0, 1.0, -28)))
 
-	-- Street-facing counter just inside the storefront.
-	state.counter = ModelFactory.counter(theme.accentColor, model, localCf(theme, COUNTER))
+	-- Street-facing counter just inside the storefront (top at y 5.4).
+	state.counter = ModelFactory.counter(theme.accentColor, model, toWorld(theme, COUNTER, 5.4))
 
 	-- Ready pizza stock sign at the counter.
-	local _, stockSign = ModelFactory.infoSign(model, toWorld(theme, COUNTER + Vector3.new(7, 0, -3), 4))
+	local _, stockSign = ModelFactory.infoSign(model, toWorld(theme, Vector3.new(9, 0, -40), 7))
 	state.signs.stock = stockSign
 
 	-- Oven inside the west wing.
 	state.oven = ModelFactory.oven(theme.accentColor, model, localCf(theme, OVEN))
-	local _, ovenSign = ModelFactory.infoSign(model, toWorld(theme, OVEN + Vector3.new(0, 0, -4), 4))
+	local _, ovenSign = ModelFactory.infoSign(model, toWorld(theme, OVEN + Vector3.new(0, 0, 5), 8.5))
 	state.signs.oven = ovenSign
 
 	-- Warehouse: storage pad where crates land (east wing interior).
 	state.warehouse = ModelFactory.basePart({
 		Name = "Warehouse",
-		Size = Vector3.new(12, 0.4, 12),
+		Size = Vector3.new(16, 0.4, 16),
 		Color = Color3.fromRGB(70, 55, 40),
 		Material = Enum.Material.WoodPlanks,
 		CFrame = localCf(theme, WAREHOUSE),
 		Parent = model,
 	})
-	local _, whSign = ModelFactory.infoSign(model, toWorld(theme, WAREHOUSE + Vector3.new(0, 0, 5), 4), Vector2.new(300, 90))
+	local _, whSign = ModelFactory.infoSign(model, toWorld(theme, WAREHOUSE + Vector3.new(0, 0, 7), 5), Vector2.new(300, 90))
 	state.signs.warehouse = whSign
 
 	-- Van pad: where the delivery van parks between runs.
 	state.vanPad = ModelFactory.basePart({
 		Name = "VanPad",
-		Size = Vector3.new(14, 0.4, 10),
+		Size = Vector3.new(18, 0.4, 12),
 		Color = Color3.fromRGB(50, 50, 55),
 		Material = Enum.Material.Concrete,
 		CFrame = localCf(theme, VAN_PAD),
 		Parent = model,
 	})
-	local _, vanSign = ModelFactory.infoSign(model, toWorld(theme, VAN_PAD + Vector3.new(0, 0, -6), 4))
+	local _, vanSign = ModelFactory.infoSign(model, toWorld(theme, VAN_PAD + Vector3.new(0, 0, -8), 4))
 	state.signs.van = vanSign
 
 	-- Expansion pads around the work yard.
 	for i, offset in EXPANSION_OFFSETS do
 		local pad = ModelFactory.basePart({
 			Name = "ExpansionPad" .. i,
-			Size = Vector3.new(16, 0.4, 16),
+			Size = Vector3.new(18, 0.4, 18),
 			Color = Color3.fromRGB(60, 60, 60),
 			Material = Enum.Material.Slate,
 			CFrame = localCf(theme, offset),
@@ -175,8 +178,11 @@ local function buildShop(state: PlotState, parent)
 	end
 
 	-- Patio seating in front of the storefront, under the awning.
-	ModelFactory.tableSet(model, toWorld(theme, STREET + Vector3.new(-11, 0, 0), 1.3), theme.accentColor)
-	ModelFactory.tableSet(model, toWorld(theme, STREET + Vector3.new(11, 0, 0), 1.3), theme.accentColor)
+	for _, side in { -1, 1 } do
+		local spot = toWorld(theme, STREET + Vector3.new(side * 14, 0, 3), 1.3)
+		ModelFactory.tableSet(model, spot, theme.accentColor)
+		ModelFactory.umbrella(model, spot, theme.accentColor)
+	end
 
 	PlotManager.WireInteractions(state)
 end
@@ -332,11 +338,11 @@ function PlotManager.DeliverShipment(player: Player, state: PlotState, shipment)
 		Config.IngredientColors.flour,
 		shipment.name,
 		state.model,
-		toWorld(theme, WAREHOUSE + Vector3.new(0, 30, 0))
+		toWorld(theme, WAREHOUSE, 30)
 	)
 	ModelFactory.tweenModel(
 		crateModel,
-		toWorld(theme, WAREHOUSE + Vector3.new(0, 1.6, 0)),
+		toWorld(theme, WAREHOUSE, 3.0),
 		1.2
 	)
 	task.delay(3, function()
@@ -390,8 +396,8 @@ function PlotManager.Upgrade(player: Player, state: PlotState, kind: string)
 		-- Rebuild oven visual with fancier glow. Build the NEW oven first and
 		-- move the prompts over, because destroying the old oven would lock
 		-- the prompts' Parent (they'd be destroyed with it) and re-parenting
-		-- a destroyed prompt throws.
-		local cf = state.oven:GetPivot()
+		-- a destroyed prompt throws. The oven builder takes a GROUND frame.
+		local cf = localCf(state.theme, OVEN)
 		local oldOven = state.oven
 		state.oven = ModelFactory.oven(themeColor(state), state.model, cf)
 		state.prompts.upgrade_oven.Parent = state.oven.PrimaryPart
@@ -517,18 +523,20 @@ function PlotManager.Heist(player: Player, state: PlotState)
 	)
 	local theme = state.theme
 	-- The crew walks in through the storefront, then to the warehouse.
+	-- Pedestrian builders take GROUND frames; walk paths use PIVOT
+	-- frames (ground + 3 studs, torso height of the R6 avatar).
 	local spy = ModelFactory.customer(Color3.fromRGB(40, 40, 45), state.model, toWorld(theme, STREET))
 	spy.Name = "HeistCrew"
 	ModelFactory.walkPath(spy, {
-		toWorld(theme, DOOR),
-		toWorld(theme, WAREHOUSE),
+		PlotManager.PedWorld(state, DOOR),
+		PlotManager.PedWorld(state, WAREHOUSE),
 	}, 9)
 	task.delay(6, function()
 		if spy and spy.Parent then
 			-- Flee back out through the door.
 			ModelFactory.walkPath(spy, {
-				toWorld(theme, DOOR),
-				toWorld(theme, STREET),
+				PlotManager.PedWorld(state, DOOR),
+				PlotManager.PedWorld(state, STREET),
 			}, 14)
 			task.delay(4, function()
 				if spy and spy.Parent then
@@ -717,6 +725,12 @@ end
 
 function PlotManager.LocalToWorld(state: PlotState, offset: Vector3): CFrame
 	return toWorld(state.theme, offset)
+end
+
+-- Pivot CFrame (torso center) of an R6 avatar standing at a lot point.
+-- Avatar builders take ground frames; tweens/PivotTo move the pivot.
+function PlotManager.PedWorld(state: PlotState, offset: Vector3): CFrame
+	return toWorld(state.theme, offset) * CFrame.new(0, 3, 0)
 end
 
 -- Minimap data: one entry per plot (district + owner name).

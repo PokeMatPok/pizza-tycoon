@@ -8,6 +8,10 @@ generated in code (zero meshes).
 
 ## The city
 
+- **Real scale**: pedestrians are classic R6 avatars with a walk cycle,
+  cars are full-size sedans, and restaurants seat real players — the
+  district blocks, crosswalks, traffic lights, bus stops, parked cars,
+  food carts and plazas are all sized for a 5-stud Roblox character.
 - **Five districts**, each with distinct traits, architecture and gameplay
   effects — the **CITY MAP** button (right edge of the screen) opens a live
   minimap: click a district to see prices/traffic/theft/zone pot, and fast

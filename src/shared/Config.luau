@@ -187,19 +187,19 @@ Config.City = {
 	Traffic = {
 		Period = 480, -- seconds for a full quiet -> busy -> quiet wave
 		MinLevel = 0.2,
-		MaxCars = 22,
-		CarSpeed = 24, -- studs/sec
+		MaxCars = 26,
+		CarSpeed = 32, -- studs/sec
 		LaneOffset = 5, -- right-hand lane offset from road center line
-		SpawnRadius = 170,
-		DespawnRadius = 210,
+		SpawnRadius = 200,
+		DespawnRadius = 240,
 		UpdateHz = 12, -- NPC position replication rate
 	},
 	Peds = {
-		MaxPeds = 26,
-		WalkSpeed = 7,
+		MaxPeds = 34,
+		WalkSpeed = 9,
 		IdleChance = 0.2, -- chance per waypoint to pause briefly
-		SpawnRadius = 130,
-		DespawnRadius = 170,
+		SpawnRadius = 160,
+		DespawnRadius = 200,
 	},
 }
 

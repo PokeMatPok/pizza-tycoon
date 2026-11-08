@@ -71,35 +71,55 @@ local function serveCustomer(player: Player, state, data)
 	Economy.Earn(player, price, "sale:" .. data.activeRecipe)
 	-- Floating +$ text at the counter for the owner.
 	Net.CashFloat:FireClient(player, {
-		position = PlotManager.LocalToWorld(state, PlotManager.Points.COUNTER + Vector3.new(0, 2, 0)).Position,
+		position = PlotManager.LocalToWorld(state, PlotManager.Points.COUNTER + Vector3.new(0, 4, 0)).Position,
 		amount = price,
 	})
 	return true
 end
 
--- Walk a model through CFrames sequentially; aborts if destroyed.
+-- Walk an R6 customer through PIVOT CFrames sequentially. Each leg
+-- ends facing the direction of travel, like a real walking avatar.
+-- Aborts if the model is destroyed mid-walk.
 local function walkThrough(model: Model, points: { CFrame }, studsPerSec: number): boolean
 	for i = 2, #points do
 		if not model.Parent then
 			return false
 		end
-		local dist = (points[i - 1].Position - points[i].Position).Magnitude
-		local tween = ModelFactory.tweenModel(model, points[i], math.max(0.15, dist / studsPerSec))
+		local fromPos = points[i - 1].Position
+		local toPos = points[i].Position
+		local dir = toPos - fromPos
+		local dist = dir.Magnitude
+		local target = if dist > 0.01
+			then CFrame.lookAt(toPos, toPos + dir.Unit)
+			else points[i]
+		local tween = ModelFactory.tweenModel(model, target, math.max(0.15, dist / studsPerSec))
 		tween.Completed:Wait()
 	end
 	return model.Parent ~= nil
 end
 
 local function spawnCustomer(player: Player, state, data)
-	local from = PlotManager.LocalToWorld(state, PlotManager.Points.STREET)
-	local door = PlotManager.LocalToWorld(state, PlotManager.Points.DOOR)
-	local atCounter = PlotManager.LocalToWorld(state, PlotManager.Points.COUNTER + Vector3.new(0, 0, 3))
+	-- Ground frames (feet) for building the avatar; pivot frames
+	-- (torso, +3 studs) for walking. Customers are real R6 avatars.
+	local streetGround = PlotManager.LocalToWorld(state, PlotManager.Points.STREET)
+	local doorGround = PlotManager.LocalToWorld(state, PlotManager.Points.DOOR)
+	local atCounter = PlotManager.PedWorld(state, PlotManager.Points.COUNTER + Vector3.new(0, 0, 3))
+	local counterPivot = PlotManager.PedWorld(state, PlotManager.Points.COUNTER)
 	local shirt = SHIRT_COLORS[math.random(#SHIRT_COLORS)]
-	local customer = ModelFactory.customer(shirt, state.model, from * CFrame.Angles(0, math.rad(180), 0))
+	-- Spawn on the street facing the door.
+	local customer = ModelFactory.customer(shirt, state.model, CFrame.lookAt(streetGround.Position, doorGround.Position))
+	local pathIn = {
+		PlotManager.PedWorld(state, PlotManager.Points.STREET),
+		PlotManager.PedWorld(state, PlotManager.Points.DOOR),
+		atCounter,
+	}
 	task.spawn(function()
-		if not walkThrough(customer, { from, door, atCounter }, 6) then
+		if not walkThrough(customer, pathIn, 7) then
 			return
 		end
+		-- Turn to face the counter while buying.
+		local faceTween = ModelFactory.tweenModel(customer, CFrame.lookAt(atCounter.Position, counterPivot.Position), 0.25)
+		faceTween.Completed:Wait()
 		local ok = false
 		if state.owner == player and player.Parent then
 			local freshData = DataManager.Get(player)
@@ -108,7 +128,7 @@ local function spawnCustomer(player: Player, state, data)
 			end
 		end
 		if ok then
-			local pizza = ModelFactory.pizza(recipeColorFor(data), recipeToppingFor(data), state.model, atCounter * CFrame.new(0, 1.4, 0) * CFrame.Angles(0, math.rad(90), 0))
+			local pizza = ModelFactory.pizza(recipeColorFor(data), recipeToppingFor(data), state.model, atCounter * CFrame.new(0, 1.2, 0) * CFrame.Angles(0, math.rad(90), 0))
 			task.delay(0.8, function()
 				if pizza and pizza.Parent then
 					pizza:Destroy()
@@ -117,7 +137,7 @@ local function spawnCustomer(player: Player, state, data)
 		else
 			Net.Announce:FireClient(player, "A customer left: no ready pizzas!", Color3.fromRGB(255, 200, 100))
 		end
-		walkThrough(customer, { atCounter, door, from }, 6)
+		walkThrough(customer, { atCounter, PlotManager.PedWorld(state, PlotManager.Points.DOOR), PlotManager.PedWorld(state, PlotManager.Points.STREET) }, 7)
 		task.delay(3, function()
 			if customer and customer.Parent then
 				customer:Destroy()

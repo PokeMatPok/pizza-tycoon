@@ -113,8 +113,8 @@ local function tickTheft(player: Player, state, data)
 	-- Visual: shadowy thief slips out through the storefront and flees.
 	local spy = ModelFactory.customer(Color3.fromRGB(30, 30, 35), state.model, PlotManager.LocalToWorld(state, PlotManager.Points.WAREHOUSE))
 	ModelFactory.walkPath(spy, {
-		PlotManager.LocalToWorld(state, PlotManager.Points.DOOR),
-		PlotManager.LocalToWorld(state, PlotManager.Points.STREET),
+		PlotManager.PedWorld(state, PlotManager.Points.DOOR),
+		PlotManager.PedWorld(state, PlotManager.Points.STREET),
 	}, 12)
 	task.delay(4, function()
 		if spy and spy.Parent then

@@ -178,9 +178,12 @@ function Traffic.Start(ctx)
 			local pos, heading = loopPoint(car.loop, if car.dir == 1 then car.t else car.loop.perim - car.t)
 			local right = Vector3.new(-heading.Z, 0, heading.X)
 			local lane = right * Config.City.Traffic.LaneOffset
+			-- Ground point on the road surface (top = y 0.7). The car
+			-- model's pivot is its body center, 1.6 studs above the
+			-- ground-contact frame, so lift the pivot target accordingly.
 			local world = pos + lane + Vector3.new(0, 0.7, 0)
 			if car.model.Parent then
-				car.model:PivotTo(CFrame.lookAt(world, world + heading))
+				car.model:PivotTo(CFrame.lookAt(world, world + heading) * CFrame.new(0, 1.6, 0))
 			end
 		end
 	end)

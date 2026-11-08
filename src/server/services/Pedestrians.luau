@@ -1,5 +1,6 @@
 --!strict
--- Pedestrians: blocky NPCs strolling the sidewalks. Like cars, they only
+-- Pedestrians: real R6 avatars strolling the sidewalks with a
+-- procedural walk cycle (swinging arms and legs). Like cars, they only
 -- exist near players and despawn when nobody is around. Density follows
 -- the same slow rush-hour wave (scaled per district and event), and
 -- walkers occasionally pause to look around. Clothing matches district
@@ -20,6 +21,7 @@ type Ped = {
 	t: number,
 	speed: number,
 	pause: number, -- seconds remaining paused
+	phase: number, -- walk cycle phase
 }
 
 local peds: { Ped } = {}
@@ -120,6 +122,7 @@ local function spawnPed()
 			t = t,
 			speed = Config.City.Peds.WalkSpeed * rng:NextNumber(0.8, 1.25),
 			pause = 0,
+			phase = rng:NextNumber(0, math.pi * 2),
 		})
 		return
 	end
@@ -189,16 +192,23 @@ function Pedestrians.Start(ctx)
 		for _, ped in peds do
 			if ped.pause > 0 then
 				ped.pause -= d
+				if ped.model.Parent then
+					-- Standing still: limbs settle to neutral.
+					ModelFactory.poseWalk(ped.model, 0)
+				end
 				continue
 			end
 			ped.t = (ped.t + ped.dir * ped.speed * d) % ped.loop.perim
+			ped.phase += d * ped.speed * 1.6
 			if rng:NextNumber() < Config.City.Peds.IdleChance * d then
 				ped.pause = rng:NextNumber(0.8, 2.5)
 			end
 			local pos, heading = loopPoint(ped.loop, if ped.dir == 1 then ped.t else ped.loop.perim - ped.t)
-			local world = pos + Vector3.new(0, 0.9, 0)
+			-- Sidewalk surface is y 0.9; the R6 pivot (torso) is +3 above it.
+			local world = pos + Vector3.new(0, 3.9, 0)
 			if ped.model.Parent then
 				ped.model:PivotTo(CFrame.lookAt(world, world + heading))
+				ModelFactory.poseWalk(ped.model, math.sin(ped.phase) * 0.65)
 			end
 		end
 	end)

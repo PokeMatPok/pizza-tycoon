@@ -1,9 +1,11 @@
 --!strict
 -- CityMap: builds the open world: ground, districts, road grid with
--- sidewalks and street lamps, low-poly buildings per district style,
--- plazas with district signs, and the spawn. Also serves map data to
--- Traffic/Pedestrians (road + sidewalk loops), handles minimap fast
--- travel and broadcasts CityState (traffic level, plot owners, blips).
+-- sidewalks, crosswalks, street lamps and traffic lights, low-poly
+-- buildings per district style, parked cars, bus stops, hydrants,
+-- bins, food carts, plazas with district signs, and the spawn plaza
+-- with a fountain. Also serves map data to Traffic/Pedestrians
+-- (road + sidewalk loops), handles minimap fast travel and broadcasts
+-- CityState (traffic level, plot owners, blips).
 
 local Players = game:GetService("Players")
 
@@ -46,7 +48,7 @@ local function buildLoops()
 			table.insert(sidewalkLoops, makeLoop(RoadsX[i] + inset, RoadsZ[j] + inset, RoadsX[i + 1] - inset, RoadsZ[j + 1] - inset))
 		end
 	end
-	-- The grand outer ring (road) + one big cross loop, so cars also
+	-- The grand outer ring (road) + two big cross loops, so cars also
 	-- travel across the whole city instead of circling single blocks.
 	table.insert(roadLoops, makeLoop(RoadsX[1], RoadsZ[1], RoadsX[#RoadsX], RoadsZ[#RoadsZ]))
 	table.insert(roadLoops, makeLoop(RoadsX[1], RoadsZ[1], RoadsX[#RoadsX], RoadsZ[2]))
@@ -113,10 +115,12 @@ local function buildRoads(world: Model)
 	local half = Config.City.WorldHalf
 	local rh = Config.City.RoadHalf
 	local sw = Config.City.SidewalkWidth
+	local RoadsX = Config.City.RoadsX
+	local RoadsZ = Config.City.RoadsZ
 
 	-- Road slabs. Vertical roads sit a hair above horizontal ones so
 	-- overlapping intersections don't z-fight.
-	for i, x in Config.City.RoadsX do
+	for _, x in RoadsX do
 		ModelFactory.basePart({
 			Name = "Road",
 			Size = Vector3.new(rh * 2, 0.2, half * 2),
@@ -126,7 +130,7 @@ local function buildRoads(world: Model)
 			Parent = world,
 		})
 	end
-	for j, z in Config.City.RoadsZ do
+	for _, z in RoadsZ do
 		ModelFactory.basePart({
 			Name = "Road",
 			Size = Vector3.new(half * 2, 0.2, rh * 2),
@@ -146,9 +150,9 @@ local function buildRoads(world: Model)
 		end
 		return false
 	end
-	for _, x in Config.City.RoadsX do
+	for _, x in RoadsX do
 		for z = -half + 14, half - 14, 14 do
-			if not nearAny(z, Config.City.RoadsZ, rh + 8) then
+			if not nearAny(z, RoadsZ, rh + 8) then
 				ModelFactory.basePart({
 					Name = "Dash",
 					Size = Vector3.new(0.35, 0.22, 4),
@@ -161,9 +165,9 @@ local function buildRoads(world: Model)
 			end
 		end
 	end
-	for _, z in Config.City.RoadsZ do
+	for _, z in RoadsZ do
 		for x = -half + 14, half - 14, 14 do
-			if not nearAny(x, Config.City.RoadsX, rh + 8) then
+			if not nearAny(x, RoadsX, rh + 8) then
 				ModelFactory.basePart({
 					Name = "Dash",
 					Size = Vector3.new(4, 0.22, 0.35),
@@ -178,7 +182,7 @@ local function buildRoads(world: Model)
 	end
 
 	-- Sidewalks flanking every road, with curb height.
-	for _, x in Config.City.RoadsX do
+	for _, x in RoadsX do
 		for _, side in { -1, 1 } do
 			ModelFactory.basePart({
 				Name = "Sidewalk",
@@ -190,7 +194,7 @@ local function buildRoads(world: Model)
 			})
 		end
 	end
-	for _, z in Config.City.RoadsZ do
+	for _, z in RoadsZ do
 		for _, side in { -1, 1 } do
 			ModelFactory.basePart({
 				Name = "Sidewalk",
@@ -203,21 +207,98 @@ local function buildRoads(world: Model)
 		end
 	end
 
-	-- Street lamps along roads (skip near intersections).
-	for _, x in Config.City.RoadsX do
+	-- Zebra crosswalks at every intersection: two crossings per road
+	-- arm, 4 stripes each.
+	local stripeOffsets = { -5.4, -1.8, 1.8, 5.4 }
+	for _, ix in RoadsX do
+		for _, iz in RoadsZ do
+			-- Crossings over the vertical road (north & south arms):
+			-- stripes run along Z, spread across X.
+			for _, arm in { -1, 1 } do
+				for _, off in stripeOffsets do
+					ModelFactory.basePart({
+						Name = "Crosswalk",
+						Size = Vector3.new(2.2, 0.2, 5),
+						Color = Color3.fromRGB(225, 225, 225),
+						Material = Enum.Material.SmoothPlastic,
+						CanCollide = false,
+						CFrame = CFrame.new(ix + off, 0.75, iz + arm * (rh + 3)),
+						Parent = world,
+					})
+				end
+			end
+			-- Crossings over the horizontal road (east & west arms):
+			-- stripes run along X, spread across Z.
+			for _, arm in { -1, 1 } do
+				for _, off in stripeOffsets do
+					ModelFactory.basePart({
+						Name = "Crosswalk",
+						Size = Vector3.new(5, 0.2, 2.2),
+						Color = Color3.fromRGB(225, 225, 225),
+						Material = Enum.Material.SmoothPlastic,
+						CanCollide = false,
+						CFrame = CFrame.new(ix + arm * (rh + 3), 0.74, iz + off),
+						Parent = world,
+					})
+				end
+			end
+		end
+	end
+
+	-- Street lamps along roads, arm reaching over the road.
+	for _, x in RoadsX do
 		for z = -half + 30, half - 30, 44 do
-			if not nearAny(z, Config.City.RoadsZ, rh + 10) then
-				ModelFactory.lamp(world, CFrame.new(x + rh + sw / 2, 0.9, z))
+			if not nearAny(z, RoadsZ, rh + 10) then
+				local lx = x + rh + sw / 2
+				ModelFactory.lamp(world, CFrame.lookAt(Vector3.new(lx, 0.9, z), Vector3.new(x, 0.9, z)))
 			end
 		end
 	end
-	for _, z in Config.City.RoadsZ do
+	for _, z in RoadsZ do
 		for x = -half + 30, half - 30, 44 do
-			if not nearAny(x, Config.City.RoadsX, rh + 10) then
-				ModelFactory.lamp(world, CFrame.new(x, 0.9, z + rh + sw / 2))
+			if not nearAny(x, RoadsX, rh + 10) then
+				local lz = z + rh + sw / 2
+				ModelFactory.lamp(world, CFrame.lookAt(Vector3.new(x, 0.9, lz), Vector3.new(x, 0.9, z)))
 			end
 		end
 	end
+
+	-- Traffic lights at the inner intersections (two masts on diagonal
+	-- corners, heads facing the crossing).
+	for _, ix in { RoadsX[2], RoadsX[3] } do
+		for _, iz in RoadsZ do
+			for _, corner in { { 12, 12 }, { -12, -12 } } do
+				local px, pz = ix + corner[1], iz + corner[2]
+				ModelFactory.trafficLight(world, CFrame.lookAt(Vector3.new(px, 0.9, pz), Vector3.new(ix, 0.9, iz)))
+			end
+			-- Hydrant and trash bin fill the other two corners.
+			ModelFactory.hydrant(world, CFrame.new(ix + 12, 0.9, iz - 12))
+			ModelFactory.trashBin(world, CFrame.new(ix - 12, 0.9, iz + 12))
+		end
+	end
+
+	-- Parked cars along the curbs (static dressing).
+	local parked = {
+		{ 7, -150, 0 }, { -7, -90, 180 }, { 7, 90, 180 }, { -7, 150, 0 },
+		{ 103, -150, 0 }, { 117, 150, 180 },
+		{ -213, -100, 0 }, { -227, 100, 180 },
+		{ -150, 7, 90 }, { -60, -7, -90 }, { 60, 7, 90 }, { 150, -7, -90 },
+		{ -150, 213, 90 }, { 60, 227, -90 },
+	}
+	local parkedColors = {
+		Color3.fromRGB(200, 60, 50), Color3.fromRGB(70, 110, 200), Color3.fromRGB(230, 220, 210),
+		Color3.fromRGB(40, 40, 45), Color3.fromRGB(90, 180, 120), Color3.fromRGB(220, 160, 40),
+	}
+	for i, spot in parked do
+		local color = parkedColors[(i % #parkedColors) + 1]
+		ModelFactory.car(color, world, CFrame.new(spot[1], 0.7, spot[2]) * CFrame.Angles(0, math.rad(spot[3]), 0))
+	end
+
+	-- Bus stops on sidewalks facing their road.
+	ModelFactory.busStop(world, CFrame.lookAt(Vector3.new(12.5, 0.9, 60), Vector3.new(0, 0.9, 60)))
+	ModelFactory.busStop(world, CFrame.lookAt(Vector3.new(-12.5, 0.9, -90), Vector3.new(0, 0.9, -90)))
+	ModelFactory.busStop(world, CFrame.lookAt(Vector3.new(60, 0.9, -12.5), Vector3.new(60, 0.9, 0)))
+	ModelFactory.busStop(world, CFrame.lookAt(Vector3.new(-60, 0.9, 12.5), Vector3.new(-60, 0.9, 0)))
 end
 
 -- Does `rect` (x/z center + half extents) overlap any of the reserved
@@ -241,44 +322,60 @@ local function buildDistrictBuildings(world: Model)
 		local reserved: { { number } } = {}
 		for _, theme in Config.Plots do
 			if theme.district == district.id then
-				table.insert(reserved, { theme.position.X, theme.position.Z, 52 })
+				table.insert(reserved, { theme.position.X, theme.position.Z, 62 })
 			end
 		end
-		table.insert(reserved, { district.zone.X, district.zone.Z, 22 })
-		table.insert(reserved, { district.plaza.X, district.plaza.Z, 18 })
+		table.insert(reserved, { district.zone.X, district.zone.Z, 26 })
+		table.insert(reserved, { district.plaza.X, district.plaza.Z, 24 })
 
 		-- Fill the block with a jittered grid of buildings + greenery.
+		-- Real scale: buildings are large relative to the 5-stud avatar.
 		local margin = Config.City.RoadHalf + Config.City.SidewalkWidth + 2
 		local x0, x1 = r.x0 + margin, r.x1 - margin
 		local z0, z1 = r.z0 + margin, r.z1 - margin
-		local cell = if district.style == "downtown" then 48 else 42
-		local treeChance = if district.style == "suburbs" then 0.55 elseif district.style == "waterfront" then 0.1 else 0.3
+		local cell = if district.style == "downtown" then 66 elseif district.style == "industrial" then 60 else 56
+		local treeChance = if district.style == "suburbs" then 0.5 elseif district.style == "waterfront" then 0.12 else 0.25
 
-		for gx = x0 + 10, x1 - 10, cell do
-			for gz = z0 + 10, z1 - 10, cell do
-				local cx = gx + rng:NextNumber(-4, 4)
-				local cz = gz + rng:NextNumber(-4, 4)
-				if not overlapsReserved(cx, cz, 20, 20, reserved) then
+		for gx = x0 + 14, x1 - 14, cell do
+			for gz = z0 + 14, z1 - 14, cell do
+				local cx = gx + rng:NextNumber(-5, 5)
+				local cz = gz + rng:NextNumber(-5, 5)
+				local w, d
+				if district.style == "downtown" then
+					w, d = rng:NextNumber(30, 44), rng:NextNumber(26, 38)
+				elseif district.style == "industrial" then
+					w, d = rng:NextNumber(40, 54), rng:NextNumber(28, 40)
+				elseif district.style == "oldtown" then
+					w, d = rng:NextNumber(24, 32), rng:NextNumber(22, 30)
+				elseif district.style == "suburbs" then
+					w, d = rng:NextNumber(22, 30), rng:NextNumber(20, 26)
+				else
+					w, d = rng:NextNumber(18, 26), rng:NextNumber(16, 24)
+				end
+				if not overlapsReserved(cx, cz, w / 2 + 2, d / 2 + 2, reserved) then
 					if rng:NextNumber() < treeChance then
 						if district.style == "waterfront" then
-							ModelFactory.palm(world, CFrame.new(cx, 0.55, cz), rng)
+							ModelFactory.palm(world, CFrame.new(cx, 0.1, cz), rng)
 						else
-							ModelFactory.tree(world, CFrame.new(cx, 0.55, cz), rng)
+							ModelFactory.tree(world, CFrame.new(cx, 0.1, cz), rng)
 						end
 					else
-						local w = if district.style == "industrial" then rng:NextNumber(26, 34) else rng:NextNumber(18, 26)
-						local d = if district.style == "industrial" then rng:NextNumber(22, 30) else rng:NextNumber(18, 26)
-						ModelFactory.building(district.style, world, CFrame.new(cx, 0.55, cz), w, d, rng)
+						ModelFactory.building(district.style, world, CFrame.new(cx, 0.1, cz), w, d, rng)
 					end
 				end
 			end
 		end
 
-		-- Plaza: district name sign + benches.
+		-- Plaza: district name sign + benches + a patio set.
 		local _, plazaSign = ModelFactory.infoSign(world, CFrame.new(district.plaza + Vector3.new(0, 4, 0)), Vector2.new(260, 70))
 		plazaSign.Text = ("%s\n%s"):format(district.name, district.tagline)
-		ModelFactory.bench(world, CFrame.new(district.plaza + Vector3.new(8, 0, 4)))
-		ModelFactory.bench(world, CFrame.new(district.plaza + Vector3.new(-8, 0, 4)) * CFrame.Angles(0, math.rad(180), 0))
+		ModelFactory.bench(world, CFrame.new(district.plaza + Vector3.new(8, 0.5, 4)))
+		ModelFactory.bench(world, CFrame.new(district.plaza + Vector3.new(-8, 0.5, 4)) * CFrame.Angles(0, math.rad(180), 0))
+		ModelFactory.tableSet(world, CFrame.new(district.plaza + Vector3.new(10, 0.5, -8)), district.mapColor)
+		ModelFactory.umbrella(world, CFrame.new(district.plaza + Vector3.new(10, 0.5, -8)), district.mapColor)
+		if district.style == "oldtown" or district.style == "waterfront" then
+			ModelFactory.foodCart(world, CFrame.new(district.plaza + Vector3.new(-14, 0.5, 10)) * CFrame.Angles(0, math.rad(90), 0), district.mapColor)
+		end
 	end
 end
 
@@ -291,6 +388,16 @@ local function buildSpawn(world: Model)
 	spawnLocation.Parent = world
 	local _, sign = ModelFactory.infoSign(world, CFrame.new(16, 4, -26), Vector2.new(280, 60))
 	sign.Text = "Pizza Tycoon City\nPick a district and start your empire!"
+
+	-- A small plaza south of spawn: fountain, patio tables, food cart.
+	ModelFactory.fountain(world, CFrame.new(16, 0.1, -50))
+	ModelFactory.tableSet(world, CFrame.new(30, 0.1, -44), Color3.fromRGB(240, 150, 60))
+	ModelFactory.umbrella(world, CFrame.new(30, 0.1, -44), Color3.fromRGB(240, 150, 60))
+	ModelFactory.tableSet(world, CFrame.new(2, 0.1, -66), Color3.fromRGB(240, 150, 60))
+	ModelFactory.umbrella(world, CFrame.new(2, 0.1, -66), Color3.fromRGB(240, 150, 60))
+	ModelFactory.foodCart(world, CFrame.new(34, 0.1, -30) * CFrame.Angles(0, math.rad(180), 0), Color3.fromRGB(240, 150, 60))
+	ModelFactory.bench(world, CFrame.new(4, 0.1, -50) * CFrame.Angles(0, math.rad(90), 0))
+	ModelFactory.bench(world, CFrame.new(28, 0.1, -56) * CFrame.Angles(0, math.rad(270), 0))
 end
 
 function CityMap.Init(ctx)
