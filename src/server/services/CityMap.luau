@@ -297,6 +297,7 @@ function CityMap.Init(ctx)
 	ctx.Services.CityMap = CityMap
 	Config = ctx.Config
 	Net = ctx.Net
+	ModelFactory = ctx.Services.ModelFactory
 
 	local world = Instance.new("Model")
 	world.Name = "PizzaTycoonWorld"
